@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Crime Data Visualisation</title>
+
+  
+  <script src="https://d3js.org/d3.v6.min.js"></script>
+
+<!-- CSS editing and styling-->
+ <style>
+body { font-family: Arial, sans-serif; }
+.line { fill: none; stroke-width: 2; }
+.tooltip { 
+position: absolute; background: white; padding: 5px; 
+border: 1px solid #ccc; pointer-events: none; opacity: 0;
+    }
+    
+.legend-line { width: 20px; height: 2px; margin-right: 5px; }
+.hidden { display: none; }
+
+body {
+  font-family: 'Arial', sans-serif;  
+  background-color: #f9f9f9;
+  margin: 0;
+  padding: 20px;
+  color: black;
+}
+
+
+/* --- Styles header --- */
+#header {
+font-size: 1.5em; 
+  font-weight: bold;  
+  color: black;  
+  text-align: center;  
+  margin-top: 20px;  
+  margin-bottom: 15px;  
+  font-family: 'Arial', sans-serif;  
+  text-transform: uppercase;  
+  letter-spacing: 2px;  
+  padding-bottom: 5px;  
+}
+
+/* --- Styles h2 + underline --- */
+h2 {
+  font-size: 2em; 
+  font-weight: bold;  
+  color: black;  
+  text-align: center;  
+  margin-top: 20px;  
+  margin-bottom: 15px;  
+  font-family: 'Arial', sans-serif;  
+  text-transform: uppercase;  
+  letter-spacing: 2px;  
+  border-bottom: 2px solid black;  
+  padding-bottom: 5px;  
+}
+
+/* --- Main Chart Area --- */
+svg {
+  background-color: white;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  border-radius: 12px;
+  display: block;
+  margin: 0 auto;
+}
+
+/* --- buttons --- */
+#buttons {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+
+button {
+  margin: 5px;
+  padding: 10px 16px;
+  font-size: 0.95em;
+  border: none;
+  border-radius: 12px;
+  background-color: #e0e0e0;
+  color: black;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+button:hover {
+  background-color: #ccc;
+}
+
+button.active {
+  background-color: #4CAF50;
+ 
+}
+
+/* --- Tooltip styling --- */
+.tooltip {
+  position: absolute;
+  text-align: center;
+  padding: 6px 10px;
+  font-size: 12px;
+  background: white;
+  color: black;
+  border-radius: 12px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+ 
+}
+/* --- Dropdown box --- */
+#crimeType {
+  width: 170px;  
+  padding: 10px;  
+  font-size: 1em;  
+  color: black;  
+  background-color: #f9f9f9;  
+  border: 1px solid #ccc;  
+  border-radius: 12px;  
+  cursor: pointer;  
+  font-family: 'Arial', sans-serif;  
+  transition: all 0.3s ease; 
+}
+
+  </style>
+</head>
+<body>
+
+
+  <!-- Creating title and dropdown for crime catgory selection -->
+  <h2>London Crime Data (2011–2022)</h2>
+  <label for="crimeType">Select Crime Category:</label>
+  <select id="crimeType">
+    <option value="ALL">All Crimes</option>
+    <option value="ROBBERY">Robbery</option>
+    <option value="SEXUAL OFFENCES">Sexual Offences</option>
+    <option value="THEFT">Theft</option>
+    <option value="VIOLENCE AGAINST THE PERSON">Violence</option>
+  </select>
+
+  <!-- Creating the button to toggle different line styles when needed -->
+  <button id="toggleLineTypes" class="hidden">Toggle Line Types</button>
+
+
+  <div id="header"></div>
+  <div id="chart"></div>
+
+
+  <!-- D3.js script -->
+  <script>
+
+    // --- Setting up margins and dimensions for the chart ---
+    const margin = { top: 100, right: 350, bottom: 50, left: 100 },
+          width = 1200 - margin.left - margin.right,
+          height = 500 - margin.top - margin.bottom;
+
+    // --- Creating the main SVG container for the chart ---
+    const svg = d3.select("#chart")
+                  .append("svg")
+                  .attr("width", "100%")
+                  .attr("height", height + margin.top + margin.bottom + 60)
+                  .append("g")
+                  .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    // --- Defining the scales for x (years) and y (crime count) ---
+    const x = d3.scaleLinear().range([0, width]);
+    const y = d3.scaleLinear().range([height, 0]);
+
+    // --- Create the respective x and y axes --- 
+    const xAxis = svg.append("g").attr("transform", `translate(0,${height})`);
+    const yAxis = svg.append("g");
+
+    // --- List of the crime categories and each one's corresponding colours ---
+    const categories = ["ROBBERY", "SEXUAL OFFENCES", "THEFT", "VIOLENCE AGAINST THE PERSON"];
+    const categoryColors = {
+      "ROBBERY": "#0072B2",
+      "SEXUAL OFFENCES": "#F0E442",
+      "THEFT":"#000000",
+      "VIOLENCE AGAINST THE PERSON": "#E69F00"
+    };
+
+    // --- Different line styles for visual distinction --- 
+    const lineStyles = ["solid", "dashed", "dotted", "dot-dash"];
+    let useLineTypes = false;
+
+    // --- Standard D3 line generator function ---
+    const line = d3.line()
+                   .x(d => x(d.Year))
+                   .y(d => y(d.value));
+
+    // --- Tooltip for showing data pop-out when hovering on datapoint ---
+    const tooltip = d3.select("body").append("div")
+    .attr("class", "tooltip");
+
+    // --- Creating the Legend container ---
+    const legend = svg.append("g")
+    .attr("transform", `translate(${width + 60}, 20)`);
+
+    // --- Loading and parsing CSV data ---
+    d3.csv("crime_data_yearly.csv").then(function(data) {
+      // Clean up year values (remove commas, convert to number)
+      data.forEach(d => { d.Year = +d.Year.replace(/,/g, ''); });
+
+      // --- Main update function which draws or updates the chart ---
+      function update(selectedCategory) {
+        let filteredData;
+
+        if (selectedCategory === "ALL") {
+
+          // --- Preparing data for graph showing all the categories ---
+          filteredData = categories.map((category, index) => ({
+            name: category,
+            values: data.map(d => ({ Year: d.Year, value: +d[category] })),
+            color: categoryColors[category],
+            lineStyle: useLineTypes ? lineStyles[index % lineStyles.length] : "solid"
+          }));
+          d3.select("#toggleLineTypes").classed("hidden", false);
+          d3.select("#header").text("All Crime Categories");
+        } else {
+
+          // --- Preparing data for a graph showing a single category ---
+          filteredData = [{
+            name: selectedCategory,
+            values: data.map(d => ({ Year: d.Year, value: +d[selectedCategory] })),
+            color: categoryColors[selectedCategory],
+            lineStyle: "solid"
+          }];
+          d3.select("#toggleLineTypes").classed("hidden", true);
+          d3.select("#header").text(selectedCategory);
+        }
+
+        // --- Updating the domain for axes ---
+        x.domain(d3.extent(data, d => d.Year));
+        y.domain([0, d3.max(filteredData.flatMap(d => d.values), d => d.value)]);
+
+    
+	  	xAxis.transition().duration(1000).call(d3.axisBottom(x).tickFormat(d3.format("d")));
+        yAxis.transition().duration(1000).call(d3.axisLeft(y));
+
+        
+        const lines = svg.selectAll(".line-group").data(filteredData, d => d.name);
+        const lineGroup = lines.enter().append("g").attr("class", "line-group");
+
+        // --- Drawing or updating lines ---
+        lineGroup.append("path")
+          .attr("class", "line")
+          .merge(lines.select(".line"))
+          .transition().duration(1000)
+          .attr("d", d => line(d.values))
+          .attr("stroke", d => d.color)
+          .attr("stroke-dasharray", d => {
+            if (d.lineStyle === "dashed") return "5,5";
+            if (d.lineStyle === "dotted") return "2,2";
+            if (d.lineStyle === "dot-dash") return "5,2,2,2";
+            return null;
+          });
+
+        //  --- Removing lines from previously selected graph --- 
+        lines.exit().remove();
+
+        // --- Plotting the data points (dots) and bind hover tooltips ---
+        const dots = svg.selectAll(".dot")
+          .data(filteredData.flatMap(d => d.values), d => `${d.Year}-${d.value}`);
+
+        const dotsEnter = dots.enter().append("circle")
+          .attr("class", "dot")
+          .attr("r", 4)
+          .attr("cx", d => x(d.Year))
+          .attr("cy", d => y(d.value))
+          .attr("fill", d => {
+            const category = filteredData.find(cat => cat.values.includes(d));
+            return category ? category.color : "black";
+          })
+          .attr("stroke", "black");
+
+        // --- Merging and animation of the new/updatrd dots ---
+        dotsEnter.merge(dots)
+          .transition().duration(1000)
+          .attr("cx", d => x(d.Year))
+          .attr("cy", d => y(d.value));
+
+        // --- Adding tooltip interactivity element ---
+        dotsEnter.merge(dots)
+          .on("mouseover", (event, d) => {
+            const category = filteredData.find(cat => cat.values.includes(d)).name;
+            tooltip.style("opacity", 1)
+                   .html(`Year: ${d.Year}<br>Crimes: ${d3.format(",")(d.value)}<br>Category: ${category}`)
+                   .style("left", (event.pageX + 10) + "px")
+                   .style("top", (event.pageY - 10) + "px");
+          })
+          .on("mouseout", () => tooltip.style("opacity", 0));
+
+        // --- Removing the old marks (circles representing datapoints)  --- 
+        dots.exit().transition().duration(500).style("opacity", 0).remove();
+
+        // --- Refreshing legend --- 
+        updateLegend();
+      }
+
+      // --- Drawing or updating legend based on current line type setting ---
+      function updateLegend() {
+        legend.selectAll("*").remove();
+
+        categories.forEach((category, i) => {
+          const legendRow = legend.append("g")
+                                  .attr("transform", `translate(0, ${i * 20})`);;
+
+          if (useLineTypes) {
+            legendRow.append("line")
+              .attr("x1", 0)
+              .attr("x2", 20)
+              .attr("y1", 6)
+              .attr("y2", 6)
+              .style("stroke", categoryColors[category])
+              .style("stroke-dasharray", () => {
+                const style = lineStyles[i % lineStyles.length];
+                return style === "dashed" ? "5,5" :
+                       style === "dotted" ? "2,2" :
+                       style === "dot-dash" ? "5,2,2,2" : null;
+              });
+
+            legendRow.append("text")
+              .attr("x", 25)
+              .attr("y", 10)
+              .text(category);
+          } else {
+            legendRow.append("rect")
+              .attr("width", 20)
+              .attr("height", 10)
+              .attr("fill", categoryColors[category]);
+
+            legendRow.append("text")
+              .attr("x", 25)
+              .attr("y", 10)
+              .text(category)
+              .attr("class", "legend");
+          }
+        });
+      }
+
+      // --- Toggling between solid and styled lines using button ---
+      function toggleLineTypes() {
+        useLineTypes = !useLineTypes;
+        update("ALL");
+      }
+
+     
+      update("ALL");
+
+      // --- Updating chart when dropdown value (crime category) changes ---
+      d3.select("#crimeType").on("change", function() {
+        update(this.value);
+      });
+
+      
+      d3.select("#toggleLineTypes").on("click", toggleLineTypes);
+
+      // --- Adding x-axis and y-axis labels ---
+      svg.append("text")
+         .attr("class", "x label")
+         .attr("text-anchor", "end")
+         .attr("x", width / 2)
+         .attr("y", height + 40)
+         .text("Year");
+
+      svg.append("text")
+         .attr("class", "y label")
+         .attr("text-anchor", "end")
+         .attr("x", -height / 2)
+         .attr("y", -65)
+         .attr("transform", "rotate(-90)")
+         .text("Number of Crimes");
+    });
+  </script>
+</body>
+</html>
